@@ -3,7 +3,7 @@
 ## Project Overview
 This project is a **web-based multilingual translator** that supports over 100 languages with **integrated text-to-speech (TTS)** functionality. Users can enter text, select a target language, view translations, and listen to natural-sounding audio. Built with **FastAPI** for backend and HTML/CSS/JS for frontend.
 
-##Folder Structure
+## Folder Structure
 multilingual-translator/
 │
 ├── app.py                  # Main FastAPI backend script
@@ -12,7 +12,7 @@ multilingual-translator/
 │
 ├── Frontend/              # HTML templates for frontend
   └── index.html          # Main user interface
-
+  
 ## Features
 - Translate text between 100+ languages.
 - Generate natural speech using gTTS with customizable accents.
