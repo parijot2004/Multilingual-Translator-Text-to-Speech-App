@@ -18,10 +18,3 @@ This project is a **web-based multilingual translator** that supports over 100 l
 - **Storage**: JSON for translation history
 - **Deployment**: Cloud-ready for Google Colab / Local hosting
 
-
-│   └── index.html                  # Main frontend interface (HTML page)
-│
-├── README.md                       # Project documentation and setup instructions
-│
-└── .gitignore                      # Ignore virtual environments, cache, etc.
-
