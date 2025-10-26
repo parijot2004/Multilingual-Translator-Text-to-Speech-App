@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Translator Agent</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg1:#0f172a; --bg2:#111827; --card:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --accent:#6366f1; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: linear-gradient(135deg, var(--bg1), var(--bg2)); color: var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .hero { text-align:center; padding: 18px; background: linear-gradient(90deg,#667eea,#764ba2); border-radius: 12px; }
+    .hero h1 { margin: 0 0 6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .card { background: var(--card); padding: 16px; border-radius: 12px; border: 1px solid #374151; }
+    label { display:block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+    textarea { width: 100%; min-height: 140px; border-radius: 8px; border: 1px solid #374151; background: #0b1220; color: var(--text); padding: 10px; }
+    select, input[type="checkbox"] { margin-right: 6px; }
+    .row { display:flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn { background: var(--accent); color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+    .btn.secondary { background: #374151; }
+    .status { margin-top: 10px; color: var(--muted); font-size: 14px; }
+    audio { width: 100%; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+    th, td { border-bottom: 1px solid #374151; padding: 6px 8px; text-align: left; vertical-align: top; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>Translator Agent</h1>
+      <p>Auto-detect source, fallback providers, and voice output</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <label for="text">Enter text</label>
+        <textarea id="text" placeholder="Type text to translate..."></textarea>
+
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label for="target">Target language</label>
+            <select id="target"></select>
+          </div>
+          <div>
+            <label for="tld">Accent (TTS tld)</label>
+            <select id="tld">
+              <option value="com">Default (.com)</option>
+              <option value="co.in">India (.co.in)</option>
+              <option value="co.uk">UK (.co.uk)</option>
+              <option value="com.au">Australia (.com.au)</option>
+              <option value="ca">Canada (.ca)</option>
+            </select>
+          </div>
+          <div class="row">
+            <input type="checkbox" id="slow" />
+            <label for="slow">Slow voice</label>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <button class="btn" id="translate">Translate</button>
+          <button class="btn secondary" id="clear">Clear</button>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div class="card">
+        <label>Result</label>
+        <div id="result" style="white-space: pre-wrap; min-height: 120px;"></div>
+        <audio id="audio" controls></audio>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <label>History</label>
+      <table id="history">
+        <thead><tr><th>Time</th><th>Target</th><th>Input</th><th>Output</th><th>Provider</th><th>Latency</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const api = {
+      languages: "/api/languages",
+      translate: "/api/translate"
+    };
+
+    async function loadLanguages() {
+      try {
+        const res = await fetch(api.languages);
+        const data = await res.json();
+        const sel = $("target");
+        sel.innerHTML = "";
+        (data.languages || []).forEach(item => {
+          const opt = document.createElement("option");
+          opt.value = item.code;
+          opt.textContent = item.label;
+          sel.appendChild(opt);
+        });
+        const hasHi = Array.from(sel.options).some(o => o.value.toLowerCase() === "hi");
+        sel.value = hasHi ? "hi" : (sel.options[0]?.value || "en");
+      } catch (e) {
+        $("status").textContent = "Failed to load languages: " + e;
+      }
+    }
+
+    function pushHistory(row) {
+      const tr = document.createElement("tr");
+      const cells = [row.time, row.target, row.input, row.output, row.provider, row.elapsed + "s"];
+      cells.forEach(c => {
+        const td = document.createElement("td");
+        td.textContent = c;
+        tr.appendChild(td);
+      });
+      $("history").querySelector("tbody").prepend(tr);
+    }
+
+    function setAudioFromBase64(b64, mime) {
+      const byteChars = atob(b64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mime || "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+      const audio = $("audio");
+      audio.src = url;
+      audio.load();
+    }
+
+    $("translate").addEventListener("click", async () => {
+      const text = $("text").value.trim();
+      const target = $("target").value;
+      const tld = $("tld").value;
+      const slow = $("slow").checked;
+      $("status").textContent = "Translating...";
+      $("result").textContent = "";
+
+      try {
+        const res = await fetch(api.translate, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, target, slow, tld })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          $("status").textContent = "Error: " + (data.error || "Unknown error");
+          return;
+        }
+        const resultText = [
+          "Translation: " + data.translation,
+          "Target language: " + data.target_name + " (" + data.target + ")",
+          "Provider: " + data.provider,
+          "Time: " + data.elapsed + "s"
+        ].join("\n");
+        $("result").textContent = resultText;
+        $("status").textContent = "Success via " + data.provider + " in " + data.elapsed + "s";
+
+        if (data.audio_base64) {
+          setAudioFromBase64(data.audio_base64, data.audio_mime);
+        }
+
+        pushHistory({
+          time: new Date().toLocaleString(),
+          target: data.target,
+          input: text,
+          output: data.translation,
+          provider: data.provider,
+          elapsed: data.elapsed
+        });
+      } catch (e) {
+        $("status").textContent = "Error: " + e;
+      }
+    });
+
+    $("clear").addEventListener("click", () => {
+      $("text").value = "";
+      $("result").textContent = "";
+      $("audio").src = "";
+      $("status").textContent = "";
+    });
+
+    loadLanguages();
+  </script>
+</body>
+</html>
